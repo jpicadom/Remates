@@ -18,30 +18,6 @@ iniciaSesion <-"http://www.crremates.com/home/505.php"
 options(RDataCollectionLogin="jpicado3@costarricense.cr:john1051")
 getURL(iniciaSesion,userpwd=getOption("RDataCollectionLogin"),followlocation=TRUE)
 
-# Descargar las tablas por provincia del area metropolitana
-# totProvincias<-4
-# tablaResumen<-data.frame()
-# ruta<-"http://www.crremates.com/home/141.php?prov="
-# listaRemates<-list()
-# for(i in 1:totProvincias){
-#   url <- paste0(ruta,i)
-#   download.file(url,destfile ="rematesResumen.xml")
-#   tablas <- readHTMLTable("rematesResumen.xml",header = TRUE, stringsAsFactors=FALSE)
-#   tablaResumen <- rbind(tablaResumen,tablas[[3]]) # 3ra tabla contiene los datos
-#   tablaResumen<-tablaResumen[-1,] # remueve los nombres de la primera fila
-#   enlaces<-url %>% read_html() %>% html_nodes("td") # Extrae atributos en td
-#   urlRemate <- lapply(enlaces,function (x) {str_extract(x,"=\\d{5,7}")}) # Extrae el numero
-#   urlRemate <- lapply(urlRemate,function (x) {str_extract(x,"\\d{5,7}")}) # Remueve el "="
-#   urlRemate<- urlRemate[-which(is.na(urlRemate[]))] # Remueve los "na"
-#   urlRemate<-unique(urlRemate)
-#   listaRemates <- c(listaRemates,urlRemate)
-# }
-# listaRemates<-as.numeric(listaRemates)
-# tablaResumen$V1<-listaRemates
-# str(tablaResumen)
-# head(tablaResumen)
-
-
 # Extraccion DETALLADA de datos por numero de remate
 # Lista de remates para las 4 provincias
 totProvincias<-4
@@ -58,17 +34,22 @@ for(i in 1:totProvincias){
 }
 listaRemates<-as.numeric(listaRemates)
 
+# Revisar contra los remates existentes para extraer sólo los nuevos
+existentes <- read.xlsx(file = "RematesTemp.xlsx",sheetName = "Sheet1", header = TRUE, as.data.frame = TRUE,encoding = "UTF-8")
+numActual <- c(existentes$num,listaRemates)
+nuevos <- as.numeric(names(which(table(numActual)==1)))
+
 #Extraer la informacion por numero de remate
 getCurlOptionsConstants()[["connecttimeout"]]
-myOpts <- curlOptions(connecttimeout=10000)
+myOpts <- curlOptions(connecttimeout=100000)
 ruta<-"http://www.crremates.com/home/112.php?cod_remate="
 tablaDetalle<-data.frame()
-for(i in 1:length(listaRemates)){
-  url <- paste0(ruta,listaRemates[i])
+for(i in 1:length(nuevos)){
+  url <- paste0(ruta,nuevos[i])
   download.file(url,destfile ="rematesDetalle.xml")
   tablas <- readHTMLTable("rematesDetalle.xml",header = TRUE, stringsAsFactors=FALSE)
   tablaPropiedad<-tablas[[1]]
-  num<-listaRemates[i]
+  num<-nuevos[i]
   tipo<-tablaPropiedad[9,2]
   fecha<-tablaPropiedad[6,2]
   hora<-tablaPropiedad[5,2]
@@ -139,8 +120,10 @@ tablaFoco <- tablaFoco[!tablaFoco$canton %in% lugares, ] # Excluye los lugares a
 tablaFoco$distrito<-as.character(tablaFoco$distrito)
 hoy<-Sys.Date()
 tablaFoco<- tablaFoco %>% filter(fecha>hoy) # Excluye remates antiguos
-tablaFoco<- tablaFoco %>% arrange(fecha)
-#http://www.crremates.com/home/112.php?cod_remate=64476
-write.xlsx(tablaFoco,file = "C:\\Users\\Jonathan\\Dropbox\\FamPicadoGomez\\ResumenRemates2.xlsx",
+tablaFoco$semana<-week(tablaFoco$fecha)
+tablaFoco<- tablaFoco %>% dplyr::select(num,semana,tipo,finca,fecha,hora,base,juzgado,provincia,canton,distrito,
+                                        terreno,acreedor,expediente,colones,deudor,linderos)%>% arrange(fecha)
+unionTablas <- rbind(existentes,tablaFoco)
+write.xlsx(unionTablas,file = "C:\\Users\\Jonathan\\Dropbox\\FamPicadoGomez\\RematesTemp.xlsx",
            row.names = FALSE,col.names = TRUE)
-library(xlsx)
+# Tengo que unirlas y luego remover las de fechas anteriores antes de guardar el archivo nuevo para que no haya una mezcla
